@@ -1,6 +1,6 @@
 
 var FQC = (() => {
-  var _scriptDir = typeof document !== 'undefined' && document.currentScript ? document.currentScript.src : undefined;
+  var _scriptDir = import.meta.url;
   
   return (
 function(FQC) {
@@ -95,6 +95,12 @@ Module['ready'] = new Promise(function(resolve, reject) {
       if (!Object.getOwnPropertyDescriptor(Module['ready'], '_create_free_queue')) {
         Object.defineProperty(Module['ready'], '_create_free_queue', { configurable: true, get: function() { abort('You are getting _create_free_queue on the Promise object, instead of the instance. Use .then() to get called back with the instance, see the MODULARIZE docs in src/settings.js') } });
         Object.defineProperty(Module['ready'], '_create_free_queue', { configurable: true, set: function() { abort('You are setting _create_free_queue on the Promise object, instead of the instance. Use .then() to get called back with the instance, see the MODULARIZE docs in src/settings.js') } });
+      }
+    
+
+      if (!Object.getOwnPropertyDescriptor(Module['ready'], '_destroy_free_queue')) {
+        Object.defineProperty(Module['ready'], '_destroy_free_queue', { configurable: true, get: function() { abort('You are getting _destroy_free_queue on the Promise object, instead of the instance. Use .then() to get called back with the instance, see the MODULARIZE docs in src/settings.js') } });
+        Object.defineProperty(Module['ready'], '_destroy_free_queue', { configurable: true, set: function() { abort('You are setting _destroy_free_queue on the Promise object, instead of the instance. Use .then() to get called back with the instance, see the MODULARIZE docs in src/settings.js') } });
       }
     
 
@@ -1672,10 +1678,15 @@ function createExportWrapper(name, fixedasm) {
 }
 
 var wasmBinaryFile;
+if (Module['locateFile']) {
   wasmBinaryFile = 'main.wasm';
   if (!isDataURI(wasmBinaryFile)) {
     wasmBinaryFile = locateFile(wasmBinaryFile);
   }
+} else {
+  // Use bundler-friendly `new URL(..., import.meta.url)` pattern; works in browsers too.
+  wasmBinaryFile = new URL('main.wasm', import.meta.url).toString();
+}
 
 function getBinary(file) {
   try {
@@ -2115,12 +2126,16 @@ var ASM_CONSTS = {
           // object in Module['mainScriptUrlOrBlob'], or a URL to it, so that pthread Workers can
           // independently load up the same main application file.
           'urlOrBlob': Module['mainScriptUrlOrBlob']
-          || _scriptDir
           ,
           'wasmMemory': wasmMemory,
           'wasmModule': wasmModule,
         });
       },allocateUnusedWorker:function() {
+        // If we're using module output and there's no explicit override, use bundler-friendly pattern.
+        if (!Module['locateFile']) {
+          PThread.unusedWorkers.push(new Worker(new URL('main.worker.js', import.meta.url)));
+          return;
+        }
         // Allow HTML module to configure the location where the 'worker.js' file will be loaded from,
         // via Module.locateFile() function. If not specified, then the default URL 'worker.js' relative
         // to the main html file is loaded.
@@ -2541,6 +2556,12 @@ var _create_free_queue = Module["_create_free_queue"] = createExportWrapper("cre
 var _malloc = Module["_malloc"] = createExportWrapper("malloc");
 
 /** @type {function(...*):?} */
+var _destroy_free_queue = Module["_destroy_free_queue"] = createExportWrapper("destroy_free_queue");
+
+/** @type {function(...*):?} */
+var _free = Module["_free"] = createExportWrapper("free");
+
+/** @type {function(...*):?} */
 var _free_queue_push = Module["_free_queue_push"] = createExportWrapper("free_queue_push");
 
 /** @type {function(...*):?} */
@@ -2605,9 +2626,6 @@ var __emscripten_thread_exit = Module["__emscripten_thread_exit"] = createExport
 
 /** @type {function(...*):?} */
 var _pthread_self = Module["_pthread_self"] = createExportWrapper("pthread_self");
-
-/** @type {function(...*):?} */
-var _free = Module["_free"] = createExportWrapper("free");
 
 /** @type {function(...*):?} */
 var _emscripten_stack_get_base = Module["_emscripten_stack_get_base"] = function() {
@@ -3105,9 +3123,4 @@ run();
 }
 );
 })();
-if (typeof exports === 'object' && typeof module === 'object')
-  module.exports = FQC;
-else if (typeof define === 'function' && define['amd'])
-  define([], function() { return FQC; });
-else if (typeof exports === 'object')
-  exports["FQC"] = FQC;
+export default FQC;

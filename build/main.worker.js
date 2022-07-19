@@ -64,14 +64,9 @@ self.onmessage = (e) => {
 
       Module['ENVIRONMENT_IS_PTHREAD'] = true;
 
-      if (typeof e.data.urlOrBlob == 'string') {
-        importScripts(e.data.urlOrBlob);
-      } else {
-        var objectUrl = URL.createObjectURL(e.data.urlOrBlob);
-        importScripts(objectUrl);
-        URL.revokeObjectURL(objectUrl);
-      }
-      FQC(Module).then(function (instance) {
+      (e.data.urlOrBlob ? import(e.data.urlOrBlob) : import('./main.js')).then(function(exports) {
+        return exports.default(Module);
+      }).then(function(instance) {
         Module = instance;
       });
     } else if (e.data.cmd === 'run') {
