@@ -12,43 +12,6 @@
 
 var Module = {};
 
-// Node.js support
-var ENVIRONMENT_IS_NODE = typeof process == 'object' && typeof process.versions == 'object' && typeof process.versions.node == 'string';
-if (ENVIRONMENT_IS_NODE) {
-  // Create as web-worker-like an environment as we can.
-
-  var nodeWorkerThreads = require('worker_threads');
-
-  var parentPort = nodeWorkerThreads.parentPort;
-
-  parentPort.on('message', function(data) {
-    onmessage({ data: data });
-  });
-
-  var fs = require('fs');
-
-  Object.assign(global, {
-    self: global,
-    require: require,
-    Module: Module,
-    location: {
-      href: __filename
-    },
-    Worker: nodeWorkerThreads.Worker,
-    importScripts: function(f) {
-      (0, eval)(fs.readFileSync(f, 'utf8'));
-    },
-    postMessage: function(msg) {
-      parentPort.postMessage(msg);
-    },
-    performance: global.performance || {
-      now: function() {
-        return Date.now();
-      }
-    },
-  });
-}
-
 // Thread-local guard variable for one-time init of the JS state
 var initializedJS = false;
 
@@ -62,11 +25,6 @@ function assert(condition, text) {
 
 function threadPrintErr() {
   var text = Array.prototype.slice.call(arguments).join(' ');
-  // See https://github.com/emscripten-core/emscripten/issues/14804
-  if (ENVIRONMENT_IS_NODE) {
-    fs.writeSync(2, text + '\n');
-    return;
-  }
   console.error(text);
 }
 function threadAlert() {
@@ -113,6 +71,9 @@ self.onmessage = (e) => {
         importScripts(objectUrl);
         URL.revokeObjectURL(objectUrl);
       }
+      FQC(Module).then(function (instance) {
+        Module = instance;
+      });
     } else if (e.data.cmd === 'run') {
       // This worker was idle, and now should start executing its pthread entry
       // point.

@@ -17,6 +17,9 @@ extern "C" {
 #define EMSCRIPTEN_KEEPALIVE __attribute__((used))
 #endif
 
+/**
+ * C Struct to represent FreeQueue
+*/
 struct FreeQueue {
     size_t bufferLength;
     size_t channelCount;
@@ -29,11 +32,41 @@ enum FQState {
     WRITE = 1
 };
 
+/**
+ * C API for implementing and acessing FreeQueue.
+ */
+
+/**
+ * Create a FreeQueue and returns pointer.
+ * Takes length of FreeQueue and channel Count as parameters.
+ * Returns pointer to created FreeQueue.
+*/
 EMSCRIPTEN_KEEPALIVE struct FreeQueue* create_free_queue(size_t length, size_t channelCount);
+
+/**
+ * Push new data to FreeQueue.
+ * Takes pointer to FreeQueue, pointer to input data, and block length as parameters.
+ * Returns if operation was successful or not as boolean.
+*/
 EMSCRIPTEN_KEEPALIVE bool free_queue_push(struct FreeQueue* fq, float** input, size_t blockLength);
+
+/**
+ * Pull data from FreeQueue.
+ * Takes pointer to FreeQueue, pointer to output buffers, and block length as parameters.
+ * Returns if operation was successful or not as boolean.
+*/
 EMSCRIPTEN_KEEPALIVE bool free_queue_pull(struct FreeQueue* fq, float** output, size_t blockLength);
+
+/**
+ * Destroy FreeQueue.
+ * Takes pointer to FreeQueue as parameter.
+*/
 EMSCRIPTEN_KEEPALIVE void destroy_free_queue(struct FreeQueue* fq);
 
+/**
+ * Helper Function to get Pointers to data members of FreeQueue Struct.
+ * Takes pointer to FreeQueue, and char* string refering to data member to query.
+*/
 EMSCRIPTEN_KEEPALIVE void* get_free_queue_pointers(struct FreeQueue* fq, char* data);
 
 #ifdef FREE_QUEUE_IMPL
@@ -71,6 +104,14 @@ struct FreeQueue* create_free_queue(size_t length, size_t channelCount) {
     return fq;
 }
 
+void destroy_free_queue(struct FreeQueue* fq) {
+    for(int i = 0; i < fq->channelCount; i++) {
+        free(fq->channels[i]);
+    }
+    free(fq->channels);
+    free(fq);
+}
+
 bool free_queue_push(struct FreeQueue* fq, float** input, size_t blockLength) {
     uint32_t currentRead = atomic_load(fq->state + READ);
     uint32_t currentWrite = atomic_load(fq->state + WRITE);
@@ -78,12 +119,13 @@ bool free_queue_push(struct FreeQueue* fq, float** input, size_t blockLength) {
     if (_getAvailableWrite(fq, currentRead, currentWrite) < blockLength) {
       return false;
     }
-
+    
     for (uint32_t i = 0; i < blockLength; i++) {
         for (uint32_t channel = 0; channel < fq->channelCount; channel++) {
             fq->channels[channel][(currentWrite + i) % fq->bufferLength] = input[channel][i];
         }
     }
+    
     uint32_t nextWrite = (currentWrite + blockLength) % fq->bufferLength;
     atomic_store(fq->state + WRITE, nextWrite);
     return true;
@@ -96,7 +138,7 @@ bool free_queue_pull(struct FreeQueue* fq, float** output, size_t blockLength) {
     if (_getAvailableRead(fq, currentRead, currentWrite) < blockLength) {
       return false;
     }
-
+    
     for (uint32_t i = 0; i < blockLength; i++) {
         for (uint32_t channel = 0; channel < fq->channelCount; channel++) {
             output[channel][i] = fq->channels[channel][(currentRead + i) % fq->bufferLength];
@@ -122,11 +164,14 @@ void* get_free_queue_pointers(struct FreeQueue* fq, char* data) {
     return 0;
 }
 
+/**
+ * Helper function for debugging
+*/
 EMSCRIPTEN_KEEPALIVE void print_data(struct FreeQueue* fq) {
     for (uint32_t channel = 0; channel < fq->channelCount; channel++) {
         printf("channel %d: ", channel);
         for (uint32_t i = 0; i < fq->bufferLength; i++) {
-            printf("%.0f ", fq->channels[channel][i]);
+            printf("%f ", fq->channels[channel][i]);
         }
         printf("\n");
     }
@@ -140,6 +185,9 @@ EMSCRIPTEN_KEEPALIVE void print_data(struct FreeQueue* fq) {
     printf("----------\n");
 }
 
+/**
+ * Helper function for debugging
+*/
 EMSCRIPTEN_KEEPALIVE void free_queue_address(struct FreeQueue* fq) {
     printf("bufferLength: %p   uint: %zu\n", &fq->bufferLength, (size_t)&fq->bufferLength);
     printf("channelCount: %p   uint: %zu\n", &fq->channelCount, (size_t)&fq->channelCount);
